@@ -1,11 +1,13 @@
 from atproto import Client
 import time
+from bluesky_db import BlueskyDB
 
 class BlueskyFollowerFinder:
     def __init__(self, email, password):
         self.client = Client()
         self.email = email
         self.password = password
+        self.db = BlueskyDB()
         
     def login(self):
         """Log in to Bluesky"""
@@ -51,83 +53,96 @@ class BlueskyFollowerFinder:
         
         cursor = None
         chunk_num = 1
+        total_processed = 0
+        skipped_previously_unfollowed = 0
         
-        while True:
-            print(f"\nFetching chunk {chunk_num} of @{friend_handle}'s followers...")
-            
-            try:
-                # Get next chunk of followers
-                if cursor:
-                    response = self.client.app.bsky.graph.get_followers({
-                        'actor': friend_handle,
-                        'limit': chunk_size,
-                        'cursor': cursor
-                    })
-                else:
-                    response = self.client.app.bsky.graph.get_followers({
-                        'actor': friend_handle,
-                        'limit': chunk_size
-                    })
-                
-                followers = [(f.did, f.handle) for f in response.followers]
-                cursor = response.cursor
-                
-                # Filter out accounts you already follow
-                new_follows = [(did, handle) for did, handle in followers if did not in my_follows]
-                
-                print(f"Found {len(new_follows)} new accounts in this chunk")
-                
-                if new_follows:
-                    # Ask if user wants to process this chunk
-                    choice = input(f"Process these {len(new_follows)} accounts? (y/n/q to quit): ").lower()
+        print(f"\nStarting to process @{friend_handle}'s followers in chunks of {chunk_size}...")
+        print("Press Ctrl+C at any time to stop the script safely\n")
+        
+        try:
+            while True:
+                try:
+                    if cursor:
+                        response = self.client.app.bsky.graph.get_followers({
+                            'actor': friend_handle,
+                            'limit': chunk_size,
+                            'cursor': cursor
+                        })
+                    else:
+                        response = self.client.app.bsky.graph.get_followers({
+                            'actor': friend_handle,
+                            'limit': chunk_size
+                        })
                     
-                    if choice == 'q':
-                        print("Quitting...")
-                        break
-                    elif choice == 'y':
-                        # Follow accounts in this chunk
+                    followers = [(f.did, f.handle) for f in response.followers]
+                    cursor = response.cursor
+                    
+                    # Filter out accounts you already follow and previously unfollowed
+                    new_follows = []
+                    for did, handle in followers:
+                        if did in my_follows:
+                            continue
+                        if self.db.is_previously_unfollowed(did):
+                            skipped_previously_unfollowed += 1
+                            continue
+                        new_follows.append((did, handle))
+                    
+                    print(f"\nChunk {chunk_num}: Found {len(new_follows)} new accounts to follow")
+                    if skipped_previously_unfollowed > 0:
+                        print(f"Skipped {skipped_previously_unfollowed} previously unfollowed accounts")
+                    
+                    if new_follows:
                         for i, (did, handle) in enumerate(new_follows, 1):
                             try:
-                                print(f"[{i}/{len(new_follows)}] Attempting to follow @{handle}")
+                                print(f"[Chunk {chunk_num}, {i}/{len(new_follows)}] Following @{handle}")
                                 self.client.app.bsky.graph.follow.create(
                                     repo=self.client.me.did,
                                     record={'subject': did, 'createdAt': time.strftime('%Y-%m-%dT%H:%M:%SZ')}
                                 )
-                                print(f"Successfully followed @{handle}")
-                                my_follows.add(did)  # Add to our follow list so we don't try again
+                                my_follows.add(did)
+                                total_processed += 1
                                 
-                                # 6 second delay between follows
                                 time.sleep(6)
                                 
                             except Exception as e:
                                 print(f"Error following @{handle}: {str(e)}")
-                
-                if not cursor:
-                    print("\nNo more followers to process!")
+                    
+                    if not cursor:
+                        print("\nCompleted! No more followers to process.")
+                        print(f"Total accounts followed: {total_processed}")
+                        print(f"Total previously unfollowed accounts skipped: {skipped_previously_unfollowed}")
+                        break
+                        
+                    chunk_num += 1
+                    
+                except Exception as e:
+                    print(f"Error fetching followers: {str(e)}")
                     break
                     
-                chunk_num += 1
-                
-            except Exception as e:
-                print(f"Error fetching followers: {str(e)}")
-                break
+        except KeyboardInterrupt:
+            print("\n\nScript stopped by user.")
+            print(f"Total accounts followed before stopping: {total_processed}")
+            print(f"Total previously unfollowed accounts skipped: {skipped_previously_unfollowed}")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.db.close()
 
 def main():
-    # Replace with your credentials
-    manager = BlueskyFollowerFinder("pdennis.research@gmail.com", "RjU9!0gDH!GCxwvx")
-    
-    try:
-        manager.login()
-        
-        # Get the friend's handle from user input
-        friend = input("Enter your friend's handle (without the @): ")
-        chunk_size = input("How many followers to fetch per chunk? (default 100): ")
-        chunk_size = int(chunk_size) if chunk_size.isdigit() else 100
-        
-        manager.follow_friends_followers_chunked(friend, chunk_size)
-        
-    except Exception as e:
-        print(f"Error: {str(e)}")
+    with BlueskyFollowerFinder("pdennis.research@gmail.com", "RjU9!0gDH!GCxwvx") as manager:
+        try:
+            manager.login()
+            
+            friend = input("Enter your friend's handle (without the @): ")
+            chunk_size = input("How many followers to fetch per chunk? (default 100): ")
+            chunk_size = int(chunk_size) if chunk_size.isdigit() else 100
+            
+            manager.follow_friends_followers_chunked(friend, chunk_size)
+            
+        except Exception as e:
+            print(f"Error: {str(e)}")
 
 if __name__ == "__main__":
     main()

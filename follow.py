@@ -102,7 +102,7 @@ class BlueskyFollowerFinder:
                                 my_follows.add(did)
                                 total_processed += 1
                                 
-                                time.sleep(6)
+                                time.sleep(9)
                                 
                             except Exception as e:
                                 print(f"Error following @{handle}: {str(e)}")
@@ -131,7 +131,7 @@ class BlueskyFollowerFinder:
         self.db.close()
 
 def main():
-    with BlueskyFollowerFinder("pdennis.research@gmail.com", "RjU9!0gDH!GCxwvx") as manager:
+    with BlueskyFollowerFinder("patdennis.humanist@gmail.com", "fazJod-migked-4vyccy") as manager:
         try:
             manager.login()
             

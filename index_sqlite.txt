@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS unfollowed_accounts (
+    did TEXT PRIMARY KEY,
+    handle TEXT NOT NULL,
+    unfollowed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_unfollowed_handle ON unfollowed_accounts(handle);
+
+CREATE INDEX IF NOT EXISTS idx_unfollowed_time_handle 
+ON unfollowed_accounts(unfollowed_at DESC, handle);
+
+CREATE TRIGGER IF NOT EXISTS enforce_did_format
+AFTER INSERT ON unfollowed_accounts
+BEGIN
+    SELECT CASE 
+        WHEN NEW.did NOT LIKE 'did:%' 
+        THEN RAISE(ABORT, 'Invalid DID format')
+    END;
+END;
+

@@ -108,7 +108,7 @@ class BlueskyFollowerManager:
         self.db.close()
 
 def main():
-    with BlueskyFollowerManager("pdennis.research@gmail.com", "RjU9!0gDH!GCxwvx") as manager:
+    with BlueskyFollowerManager("patdennis.humanist@gmail.com", "fazJod-migked-4vyccy") as manager:
         try:
             manager.login()
             manager.unfollow_non_followers()
